@@ -83,11 +83,12 @@ jobs:
             export GAMBOPT=m128M
           fi
           set +e
-          timeout 180s ./gsi/gsi -:tl,~~bin=./bin,~~lib=./lib,~~include=./include \
-            -f ./tests/run-unit-tests.scm -gsi ./tests/unit-tests/06-thread \
+          cd tests
+          timeout 180s ../gsi/gsi -:tl,~~bin=../bin,~~lib=../lib,~~include=../include \
+            -f ./run-unit-tests.scm -gsi ./unit-tests/06-thread \
             > /tmp/thread-suite.log 2>&1
           rc=$?
           cat /tmp/thread-suite.log
           echo "THREAD_SUITE_RC=$rc"
-          # This is an investigation step: preserve the full failure inventory in logs.
+          # Investigation-only: retain the failure inventory in the Actions log.
           exit 0
