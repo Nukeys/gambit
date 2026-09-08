@@ -1042,7 +1042,7 @@ OTHER DEALINGS IN THE SOFTWARE.
 
 (define specialized-array-default-safe?
   (make-parameter
-   #t
+   #f
    (lambda (bool)
      (if (boolean? bool)
          bool
