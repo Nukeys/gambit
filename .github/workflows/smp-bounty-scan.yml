@@ -7,35 +7,41 @@ on:
   workflow_dispatch:
 
 jobs:
-  scan:
+  stress:
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [unicore, smp-p1, smp-p2, smp-p4]
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 50
     steps:
       - uses: actions/checkout@v4
-      - name: Configure SMP runtime
-        run: ./configure --enable-smp --enable-multiple-threaded-vms --enable-c-opt=-O1
+      - name: Configure runtime
+        shell: bash
+        run: |
+          case "${{ matrix.mode }}" in
+            unicore) ./configure --enable-c-opt=-O1 ;;
+            *) ./configure --enable-smp --enable-multiple-threaded-vms --enable-c-opt=-O1 ;;
+          esac
       - name: Build core
         run: make -j2 core
-      - name: Run thread tests individually
+      - name: Run stress candidates
         shell: bash
         run: |
           set +e
-          mkdir -p /tmp/smp-results
+          case "${{ matrix.mode }}" in
+            unicore) opts="-:m128M,~~bin=./bin,~~lib=./lib,~~include=./include" ;;
+            smp-p1) opts="-:p1,m128M,~~bin=./bin,~~lib=./lib,~~include=./include" ;;
+            smp-p2) opts="-:p2,m128M,~~bin=./bin,~~lib=./lib,~~include=./include" ;;
+            smp-p4) opts="-:p4,m128M,~~bin=./bin,~~lib=./lib,~~include=./include" ;;
+          esac
           failures=0
-          total=0
-          for f in tests/unit-tests/06-thread/*.scm; do
-            total=$((total+1))
-            name=$(basename "$f")
-            echo "===== $name ====="
-            timeout 20s ./gsi/gsi -:p2,m128M,~~bin=./bin,~~lib=./lib,~~include=./include -f "$f" >"/tmp/smp-results/$name.out" 2>&1
+          for name in thread_interrupt2_stress.scm thread_interrupt_stress.scm tfib_stress.scm; do
+            echo "===== ${{ matrix.mode }} $name ====="
+            timeout 90s ./gsi/gsi $opts -f "tests/unit-tests/06-thread/$name"
             rc=$?
-            if [ $rc -ne 0 ]; then
-              failures=$((failures+1))
-              echo "FAIL $name rc=$rc"
-              tail -80 "/tmp/smp-results/$name.out"
-            else
-              echo "PASS $name"
-            fi
+            echo "RESULT ${{ matrix.mode }} $name rc=$rc"
+            if [ $rc -ne 0 ]; then failures=$((failures+1)); fi
           done
-          echo "THREAD_SCAN total=$total failures=$failures"
+          echo "STRESS_SCAN mode=${{ matrix.mode }} failures=$failures"
           exit 0
