@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  differential:
+  thread-sweep:
     strategy:
       fail-fast: false
       matrix:
@@ -25,27 +25,7 @@ jobs:
           esac
       - name: Build core
         run: make -j2 core
-      - name: Full unit-suite failure list
-        shell: bash
-        run: |
-          set +e
-          case "${{ matrix.mode }}" in
-            unicore) opts="-:m256M,~~bin=../bin,~~lib=../lib,~~include=../include" ;;
-            smp-p1) opts="-:p1,m256M,~~bin=../bin,~~lib=../lib,~~include=../include" ;;
-            smp-p2) opts="-:p2,m256M,~~bin=../bin,~~lib=../lib,~~include=../include" ;;
-            smp-p4) opts="-:p4,m256M,~~bin=../bin,~~lib=../lib,~~include=../include" ;;
-          esac
-          cd tests
-          out=$(mktemp)
-          timeout 300s ../gsi/gsi $opts -f ./run-unit-tests.scm >"$out" 2>&1
-          rc=$?
-          echo "UNIT_SUITE|mode=${{ matrix.mode }}|rc=$rc"
-          grep '^\*\*\* FAILED' "$out" || true
-          grep -E '^(FAILED|PASSED) [0-9]+ UNIT TEST' "$out" || true
-          if [ $rc -eq 124 ]; then echo "UNIT_SUITE_TIMEOUT|mode=${{ matrix.mode }}"; fi
-          rm -f "$out"
-          exit 0
-      - name: Repeat suspicious stock tests
+      - name: Repeat stock 06-thread tests
         shell: bash
         run: |
           set +e
@@ -55,11 +35,23 @@ jobs:
             smp-p2) opts="-:p2,m128M,~~bin=./bin,~~lib=./lib,~~include=./include" ;;
             smp-p4) opts="-:p4,m128M,~~bin=./bin,~~lib=./lib,~~include=./include" ;;
           esac
-          for test in 09-io/write_read.scm 15-misc/serdes.scm; do
+
+          upstream_tests='current_processor.scm current_thread.scm issue_174.scm issue_216.scm make_mutex.scm make_thread.scm mutex_lock.scm mutex_race.scm mutex_race_timeout.scm mutex_unlock_plain.scm processorp.scm tfib_stress.scm thread.scm thread_init.scm thread_interrupt.scm thread_interrupt2.scm thread_join.scm thread_name.scm thread_quantum.scm thread_sleep.scm thread_specific.scm thread_state.scm thread_terminate.scm thread_thread_group.scm thread_yield.scm threadp.scm'
+
+          for test in $upstream_tests; do
+            [ -f "tests/unit-tests/06-thread/$test" ] || continue
+            # Already investigated separately, or intentionally huge stress cases.
+            case "$test" in
+              mutex_race_timeout.scm|tfib_stress.scm) reps=8 ;;
+              issue_216.scm|thread_interrupt.scm|thread_interrupt2.scm) reps=20 ;;
+              *) reps=30 ;;
+            esac
             pass=0; fail=0; timeout_count=0; crash=0
-            for i in $(seq 1 50); do
+            first_rc=''
+            first_tail=''
+            for i in $(seq 1 $reps); do
               out=$(mktemp)
-              timeout 10s ./gsi/gsi $opts -f "tests/unit-tests/$test" >"$out" 2>&1
+              timeout 12s ./gsi/gsi $opts -f "tests/unit-tests/06-thread/$test" >"$out" 2>&1
               rc=$?
               if [ $rc -eq 0 ]; then
                 pass=$((pass+1))
@@ -67,41 +59,14 @@ jobs:
                 fail=$((fail+1))
                 [ $rc -eq 124 ] && timeout_count=$((timeout_count+1))
                 [ $rc -ge 128 ] && crash=$((crash+1))
+                if [ -z "$first_rc" ]; then
+                  first_rc=$rc
+                  first_tail=$(tail -8 "$out" | tr '\n' ' ')
+                fi
               fi
               rm -f "$out"
             done
-            echo "REPEAT|mode=${{ matrix.mode }}|test=$test|pass=$pass|fail=$fail|timeouts=$timeout_count|crashes=$crash"
+            echo "THREAD_SWEEP|mode=${{ matrix.mode }}|test=$test|pass=$pass|fail=$fail|timeouts=$timeout_count|crashes=$crash|first_rc=${first_rc:-0}"
+            if [ $fail -gt 0 ]; then echo "FIRST_FAILURE|mode=${{ matrix.mode }}|test=$test|$first_tail"; fi
           done
-          exit 0
-      - name: Scaled official interrupt stress
-        shell: bash
-        run: |
-          set +e
-          testdir=tests/unit-tests/06-thread
-          scaled="$testdir/thread_interrupt2_stress_scaled_tmp.scm"
-          sed 's/(define iterations 1000000)/(define iterations 10000)/' "$testdir/thread_interrupt2_stress.scm" > "$scaled"
-          case "${{ matrix.mode }}" in
-            unicore) opts="-:m128M,~~bin=./bin,~~lib=./lib,~~include=./include" ;;
-            smp-p1) opts="-:p1,m128M,~~bin=./bin,~~lib=./lib,~~include=./include" ;;
-            smp-p2) opts="-:p2,m128M,~~bin=./bin,~~lib=./lib,~~include=./include" ;;
-            smp-p4) opts="-:p4,m128M,~~bin=./bin,~~lib=./lib,~~include=./include" ;;
-          esac
-          pass=0; fail=0; timeout_count=0; crash=0
-          for i in $(seq 1 10); do
-            out=$(mktemp)
-            timeout 25s ./gsi/gsi $opts -f "$scaled" >"$out" 2>&1
-            rc=$?
-            if [ $rc -eq 0 ]; then
-              pass=$((pass+1))
-            else
-              fail=$((fail+1))
-              [ $rc -eq 124 ] && timeout_count=$((timeout_count+1))
-              [ $rc -ge 128 ] && crash=$((crash+1))
-              echo "INTERRUPT_FAIL|mode=${{ matrix.mode }}|run=$i|rc=$rc"
-              tail -30 "$out"
-            fi
-            rm -f "$out"
-          done
-          rm -f "$scaled"
-          echo "INTERRUPT_STRESS|mode=${{ matrix.mode }}|pass=$pass|fail=$fail|timeouts=$timeout_count|crashes=$crash"
           exit 0
