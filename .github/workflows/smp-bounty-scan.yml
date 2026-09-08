@@ -1,0 +1,41 @@
+name: SMP bounty scan
+
+on:
+  push:
+    branches:
+      - fix/smp-thread-suspend-resume
+  workflow_dispatch:
+
+jobs:
+  scan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure SMP runtime
+        run: ./configure --enable-smp --enable-multiple-threaded-vms --enable-c-opt=-O1
+      - name: Build core
+        run: make -j2 core
+      - name: Run thread tests individually
+        shell: bash
+        run: |
+          set +e
+          mkdir -p /tmp/smp-results
+          failures=0
+          total=0
+          for f in tests/unit-tests/06-thread/*.scm; do
+            total=$((total+1))
+            name=$(basename "$f")
+            echo "===== $name ====="
+            timeout 20s ./gsi/gsi -:p2,m128M,~~bin=./bin,~~lib=./lib,~~include=./include -f "$f" >"/tmp/smp-results/$name.out" 2>&1
+            rc=$?
+            if [ $rc -ne 0 ]; then
+              failures=$((failures+1))
+              echo "FAIL $name rc=$rc"
+              tail -80 "/tmp/smp-results/$name.out"
+            else
+              echo "PASS $name"
+            fi
+          done
+          echo "THREAD_SCAN total=$total failures=$failures"
+          exit 0
