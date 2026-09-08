@@ -13547,6 +13547,9 @@ typedef struct ___global_state_struct
     void (*___free_mem_code)
        ___P((void *ptr),
             ());
+    void (*___make_executable_mem_code)
+       ___P((void *ptr),
+            ());
     ___SCMOBJ (*___thread_init_from_self)
        ___P((___thread *thread),
             ());
@@ -15046,6 +15049,9 @@ ___IMP_FUNC(void *,___alloc_mem_code)
    ___P((___SIZE_T bytes),
         ());
 ___IMP_FUNC(void,___free_mem_code)
+   ___P((void *ptr),
+        ());
+___IMP_FUNC(void,___make_executable_mem_code)
    ___P((void *ptr),
         ());
 #endif

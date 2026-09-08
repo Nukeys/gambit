@@ -2954,6 +2954,8 @@ end-of-code
              scheme-object
      #<<end-of-code
 
+     ___make_executable_mem_code (___arg1); /* mark the machine code block as executable */
+
      ___return(___CAST(___SCMOBJ (*)(___SCMOBJ, ___SCMOBJ, ___SCMOBJ),___arg1)(___arg2, ___arg3, ___arg4));
 
 end-of-code

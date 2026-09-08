@@ -1,6 +1,6 @@
 /* File: "setup.c" */
 
-/* Copyright (c) 1994-2025 by Marc Feeley, All Rights Reserved. */
+/* Copyright (c) 1994-2026 by Marc Feeley, All Rights Reserved. */
 
 /*
  * This module contains the routines that setup the Scheme program for
@@ -6194,6 +6194,9 @@ ___HIDDEN void setup_dynamic_linking ___PVOID
 
   ___GSTATE->___free_mem_code
     = ___free_mem_code;
+
+  ___GSTATE->___make_executable_mem_code
+    = ___make_executable_mem_code;
 
   ___GSTATE->___thread_init_from_self
     = ___thread_init_from_self;

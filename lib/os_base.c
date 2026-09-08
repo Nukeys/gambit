@@ -346,10 +346,10 @@ ___SIZE_T bytes;)
 
 #ifdef USE_mmap
 
-  ___BOOL executable = 1;
+  ___BOOL executable = !__has_builtin(__builtin___clear_cache);
 
   void* ptr = mmap (0,
-                    bytes + sizeof (___SIZE_TS),
+                    bytes + 2 * sizeof (___SIZE_TS),
                     PROT_READ | PROT_WRITE | (executable ? PROT_EXEC : 0),
                     MAP_PRIVATE | MAP_ANON,
                     -1,
@@ -358,9 +358,10 @@ ___SIZE_T bytes;)
   if (ptr == MAP_FAILED)
     return NULL;
 
-  *___CAST(___SIZE_TS*,ptr) = bytes;
+  ___CAST(___SIZE_TS*,ptr)[0] = bytes;
+  ___CAST(___SIZE_TS*,ptr)[1] = 0;
 
-  return ___CAST(___SIZE_TS*,ptr)+1;
+  return ___CAST(___SIZE_TS*,ptr)+2;
 
 #endif
 
@@ -400,9 +401,9 @@ void *ptr;)
 
 #ifdef USE_mmap
 
-  ___SIZE_TS* p = ___CAST(___SIZE_TS*,ptr)-1;
+  ___SIZE_TS* p = ___CAST(___SIZE_TS*,ptr)-2;
 
-  munmap (p, *p + sizeof (___SIZE_TS));
+  munmap (p, p[0] + 2 * sizeof (___SIZE_TS));
 
 #endif
 
@@ -410,6 +411,34 @@ void *ptr;)
 
   VirtualFree (ptr, 0, MEM_RELEASE);
 
+#endif
+}
+
+
+void ___make_executable_mem_code
+   ___P((void *ptr),
+        (ptr)
+void *ptr;)
+{
+#ifdef USE_mmap
+#if __has_builtin(__builtin___clear_cache)
+
+  ___SIZE_TS* p = ___CAST(___SIZE_TS*,ptr)-2;
+
+  if (p[1] == 0)
+    {
+      ___SIZE_TS len = p[0] + 2 * sizeof (___SIZE_TS);
+
+      p[1] = 1; /* mark machine code block as protected for execution */
+
+      mprotect(p, len, PROT_READ | PROT_EXEC);
+
+      __builtin___clear_cache(___CAST(___U8*,p), ___CAST(___U8*,p)+len);
+
+      printf("has __builtin___clear_cache... cache cleared\n");
+    }
+
+#endif
 #endif
 }
 
