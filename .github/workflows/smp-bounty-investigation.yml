@@ -73,3 +73,21 @@ jobs:
           done
           echo "ISSUE792_FAILURES=$failures"
           test "$failures" -eq 0
+
+      - name: Inventory 06-thread unit-test failures
+        if: always()
+        run: |
+          if [ "${{ matrix.mode }}" = smp ]; then
+            export GAMBOPT=p2,m128M
+          else
+            export GAMBOPT=m128M
+          fi
+          set +e
+          timeout 180s ./gsi/gsi -:tl,~~bin=./bin,~~lib=./lib,~~include=./include \
+            -f ./tests/run-unit-tests.scm -gsi ./tests/unit-tests/06-thread \
+            > /tmp/thread-suite.log 2>&1
+          rc=$?
+          cat /tmp/thread-suite.log
+          echo "THREAD_SUITE_RC=$rc"
+          # This is an investigation step: preserve the full failure inventory in logs.
+          exit 0
