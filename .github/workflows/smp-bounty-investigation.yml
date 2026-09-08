@@ -1,0 +1,75 @@
+name: SMP bounty investigation
+
+on:
+  pull_request:
+    branches: [master]
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [unicore, smp]
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y texinfo autoconf2.69
+          sudo ln -s -f "$(command -v autoconf2.69)" "$(command -v autoconf)"
+
+      - name: Configure and build
+        run: |
+          if [ "${{ matrix.mode }}" = smp ]; then
+            ./configure --enable-smp --enable-multiple-threaded-vms --enable-c-opt=-O1 --enable-c-opt-rts=-O1
+          else
+            ./configure --enable-c-opt=-O1 --enable-c-opt-rts=-O1
+          fi
+          make clean
+          make -j2 core
+
+      - name: Probe issue 813 stack-break reproduction
+        run: |
+          cat > /tmp/issue813.scm <<'EOF'
+          (declare (standard-bindings) (extended-bindings) (not safe))
+          (thread-join! (##thread-start! (##make-thread (##lambda () (##map ##identity (##make-list 34000))))))
+          EOF
+          opts="-:m128M"
+          if [ "${{ matrix.mode }}" = smp ]; then opts="-:p2,m128M"; fi
+          failures=0
+          for i in $(seq 1 20); do
+            timeout 10s ./gsi/gsi "$opts" /tmp/issue813.scm >/tmp/issue813.out 2>/tmp/issue813.err || {
+              rc=$?
+              echo "issue813 iteration $i failed rc=$rc"
+              cat /tmp/issue813.err
+              failures=$((failures+1))
+            }
+          done
+          echo "ISSUE813_FAILURES=$failures"
+          test "$failures" -eq 0
+
+      - name: Probe issue 792 shutdown/error race
+        run: |
+          cat > /tmp/issue792.scm <<'EOF'
+          (define (parallel-map func . lists)
+            (map thread-join!
+                 (map (lambda (l) (thread (lambda () (map func l)))) lists)))
+          (define numbers (iota 10000))
+          (parallel-map identity numbers numbers numbers numbers numbers numbers numbers)
+          EOF
+          opts="-:m128M"
+          if [ "${{ matrix.mode }}" = smp ]; then opts="-:p2,m128M"; fi
+          failures=0
+          for i in $(seq 1 20); do
+            timeout 10s ./gsi/gsi "$opts" /tmp/issue792.scm >/tmp/issue792.out 2>/tmp/issue792.err || {
+              rc=$?
+              echo "issue792 iteration $i failed rc=$rc"
+              cat /tmp/issue792.err
+              failures=$((failures+1))
+            }
+          done
+          echo "ISSUE792_FAILURES=$failures"
+          test "$failures" -eq 0
