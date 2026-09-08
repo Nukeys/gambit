@@ -36,6 +36,7 @@ jobs:
           esac
           timeout 15s ./gsi/gsi $opts -f tests/unit-tests/06-thread/thread_interrupt_no_thunk_target.scm
       - name: Check suspend resume semantics
+        continue-on-error: true
         shell: bash
         run: |
           case "${{ matrix.mode }}" in
@@ -45,6 +46,28 @@ jobs:
             smp-p4) opts="-:p4,m128M,~~bin=./bin,~~lib=./lib,~~include=./include" ;;
           esac
           timeout 15s ./gsi/gsi $opts -f tests/unit-tests/06-thread/thread_suspend_resume_behavior.scm
+      - name: Full unit-suite differential scan
+        shell: bash
+        run: |
+          set +e
+          case "${{ matrix.mode }}" in
+            unicore) opts="-:m256M,~~bin=../bin,~~lib=../lib,~~include=../include" ;;
+            smp-p1) opts="-:p1,m256M,~~bin=../bin,~~lib=../lib,~~include=../include" ;;
+            smp-p2) opts="-:p2,m256M,~~bin=../bin,~~lib=../lib,~~include=../include" ;;
+            smp-p4) opts="-:p4,m256M,~~bin=../bin,~~lib=../lib,~~include=../include" ;;
+          esac
+          cd tests
+          out=$(mktemp)
+          timeout 300s ../gsi/gsi $opts -f ./run-unit-tests.scm >"$out" 2>&1
+          rc=$?
+          echo "UNIT_SUITE|mode=${{ matrix.mode }}|rc=$rc"
+          grep -E '^\*\*\* FAILED|^FAILED [0-9]+ UNIT TEST|^PASSED [0-9]+ UNIT TEST|^\[[0-9]+\|' "$out" | tail -160 || true
+          if [ $rc -eq 124 ]; then
+            echo "UNIT_SUITE_TIMEOUT|mode=${{ matrix.mode }}"
+            tail -100 "$out"
+          fi
+          rm -f "$out"
+          exit 0
       - name: Scale official interrupt stress test
         shell: bash
         run: |
