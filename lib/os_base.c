@@ -434,8 +434,6 @@ void *ptr;)
       mprotect(p, len, PROT_READ | PROT_EXEC);
 
       __builtin___clear_cache(___CAST(___U8*,p), ___CAST(___U8*,p)+len);
-
-      printf("has __builtin___clear_cache... cache cleared\n");
     }
 
 #endif
