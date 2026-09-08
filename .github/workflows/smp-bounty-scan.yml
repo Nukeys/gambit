@@ -7,11 +7,11 @@ on:
   workflow_dispatch:
 
 jobs:
-  mutex-timeout-race:
+  interrupt-stress:
     strategy:
       fail-fast: false
       matrix:
-        mode: [unicore, smp-p2, smp-p4]
+        mode: [unicore, smp-p1, smp-p2, smp-p4]
     runs-on: ubuntu-24.04
     timeout-minutes: 50
     steps:
@@ -21,16 +21,23 @@ jobs:
         run: |
           case "${{ matrix.mode }}" in
             unicore) ./configure --enable-c-opt=-O1 ;;
-            smp-p2|smp-p4) ./configure --enable-smp --enable-multiple-threaded-vms --enable-c-opt=-O1 ;;
+            smp-p1|smp-p2|smp-p4) ./configure --enable-smp --enable-multiple-threaded-vms --enable-c-opt=-O1 ;;
           esac
       - name: Build core
         run: make -j2 core
-      - name: Repeat mutex_race_timeout
+      - name: Scale official interrupt stress test
+        shell: bash
+        run: |
+          sed 's/(define iterations 1000000)/(define iterations 10000)/' \
+            tests/unit-tests/06-thread/thread_interrupt2_stress.scm > /tmp/thread_interrupt2_stress_scaled.scm
+          grep 'define iterations' /tmp/thread_interrupt2_stress_scaled.scm
+      - name: Repeat scaled interrupt stress
         shell: bash
         run: |
           set +e
           case "${{ matrix.mode }}" in
             unicore) opts="-:m128M,~~bin=./bin,~~lib=./lib,~~include=./include" ;;
+            smp-p1) opts="-:p1,m128M,~~bin=./bin,~~lib=./lib,~~include=./include" ;;
             smp-p2) opts="-:p2,m128M,~~bin=./bin,~~lib=./lib,~~include=./include" ;;
             smp-p4) opts="-:p4,m128M,~~bin=./bin,~~lib=./lib,~~include=./include" ;;
           esac
@@ -39,9 +46,9 @@ jobs:
           timeouts=0
           crashes=0
           passes=0
-          for i in $(seq 1 40); do
+          for i in $(seq 1 6); do
             out=$(mktemp)
-            timeout 15s ./gsi/gsi $opts -f tests/unit-tests/06-thread/mutex_race_timeout.scm >"$out" 2>&1
+            timeout 25s ./gsi/gsi $opts -f /tmp/thread_interrupt2_stress_scaled.scm >"$out" 2>&1
             rc=$?
             if [ $rc -eq 0 ]; then
               passes=$((passes+1))
@@ -53,10 +60,10 @@ jobs:
                 crashes=$((crashes+1))
               fi
               echo "FAIL|${{ matrix.mode }}|run=$i|rc=$rc"
-              tail -60 "$out"
+              tail -80 "$out"
             fi
             rm -f "$out"
           done
 
-          echo "MUTEX_TIMEOUT_RACE|mode=${{ matrix.mode }}|passes=$passes|failures=$failures|timeouts=$timeouts|crashes=$crashes"
+          echo "INTERRUPT_STRESS|mode=${{ matrix.mode }}|passes=$passes|failures=$failures|timeouts=$timeouts|crashes=$crashes"
           exit 0
